@@ -1,36 +1,36 @@
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: tcc-postgres
+    container_name: quadra-postgres
     restart: unless-stopped
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: tcc
+      POSTGRES_DB: quadra
     ports:
       - "5433:5432"
     volumes:
       - ./postgres-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d tcc"]
+      test: ["CMD-SHELL", "pg_isready -U postgres -d quadra"]
       interval: 5s
       timeout: 5s
       retries: 10
     networks:
-      - tcc-network
+      - quadra-network
 
   api:
-    container_name: tcc-api
+    container_name: quadra-api
     build:
-      context: ../tcc-api
+      context: ../quadra-api
       dockerfile: Dockerfile.local
     volumes:
-      - ../tcc-api:/home/node/app
+      - ../quadra-api:/home/node/app
       - /home/node/app/node_modules
     env_file:
-      - ../tcc-api/.env
+      - ../quadra-api/.env
     environment:
-      DATABASE_URL: postgresql://postgres:postgres@tcc-postgres:5432/tcc?schema=public
+      DATABASE_URL: postgresql://postgres:postgres@quadra-postgres:5432/quadra?schema=public
     ports:
       - "3001:3001"
     restart: unless-stopped
@@ -38,15 +38,15 @@ services:
       postgres:
         condition: service_healthy
     networks:
-      - tcc-network
+      - quadra-network
 
   web:
-    container_name: tcc-web
+    container_name: quadra-web
     build:
-      context: ../tcc-web
+      context: ../quadra-web
       dockerfile: Dockerfile.local
     volumes:
-      - ../tcc-web:/home/node/app
+      - ../quadra-web:/home/node/app
       - /home/node/app/node_modules
     environment:
       VITE_API_URL: http://localhost:3001
@@ -56,9 +56,9 @@ services:
     depends_on:
       - api
     networks:
-      - tcc-network
+      - quadra-network
 
 networks:
-  tcc-network:
-    name: tcc-network
+  quadra-network:
+    name: quadra-network
     driver: bridge
