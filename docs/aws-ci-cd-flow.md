@@ -15,7 +15,7 @@ enquanto o estado operacional da conta e dos acessos AWS está em
 - **GitHub Actions da API e do frontend:** valida, publica e implanta novas
   versões das aplicações na infraestrutura existente.
 - **GitHub Actions da infraestrutura:** inicialmente valida o código Terraform
-  e, depois, também apresenta o `terraform plan` para revisão.
+  e poderá também apresentar o `terraform plan` para revisão.
 
 Publicar uma nova versão da API ou do frontend não deve depender de
 `terraform apply`.
@@ -111,10 +111,10 @@ Essa etapa não executará `terraform apply`, não modificará recursos AWS e n�
 automatizará o provisionamento. Conceitualmente, ela terá o mesmo papel dos CIs
 já existentes na API e no frontend: validar o código antes do merge.
 
-### Fase 3 — CI de infraestrutura com `terraform plan`
+### Fase 3 — CI opcional de infraestrutura com `terraform plan`
 
-**Status: etapa decidida para depois da estabilização do CI básico e da
-autenticação GitHub → AWS.**
+**Status: evolução opcional, ainda não implementada.** Só poderá ser considerada
+depois da estabilização do CI básico e da autenticação GitHub → AWS.
 
 ```text
 Pull Request
@@ -310,19 +310,21 @@ A abordagem inicial será:
 ```text
 PR
 ↓
-CI automático
-↓
-terraform plan
-↓
-review
+CI básico automático
 ↓
 merge
+↓
+terraform plan manual atualizado
+↓
+review
 ↓
 terraform apply manual
 ```
 
 Assim, o projeto obtém os benefícios do CI mantendo controle humano explícito
-sobre as alterações reais de infraestrutura.
+sobre as alterações reais de infraestrutura. Automatizar o `plan` em pull
+requests é opcional; mesmo sem essa automação, o `plan` manual deve ser revisado
+antes de todo `apply`.
 
 ## Fase opcional futura — Terraform CD
 
@@ -404,7 +406,7 @@ quadra-infra
         ↓
 
 
-DEPOIS
+EVOLUÇÃO OPCIONAL DO CI
 
 quadra-infra
 └── CI
@@ -430,7 +432,8 @@ quadra-web
     └── S3 → CloudFront
 
 quadra-infra
-└── CI + plan
+└── CI básico
+    ├── plan automático, se adotado
     └── apply manual
 
 
