@@ -1,9 +1,10 @@
 # Roadmap de infraestrutura
 
 Decisões sobre provisionamento AWS e a abordagem de IaC deste projeto. O
-bootstrap do remote state e a fundação de rede foram concluídos; nenhum recurso
-de aplicação, banco de dados ou computação foi provisionado, e o Docker Compose
-local continua sendo o ambiente de desenvolvimento. Ver o estado operacional em
+backend remoto, a fundação de rede e a base da plataforma de containers foram
+provisionados; ainda não existem banco de dados, ALB, ECS Service ou tasks em
+execução. O Docker Compose local continua sendo o ambiente de desenvolvimento.
+Ver o estado operacional em
 [`aws-setup-and-access.md`](aws-setup-and-access.md).
 
 ## IaC: Terraform (decidido)
@@ -16,7 +17,7 @@ Recursos previstos:
 | ------------------------------ | -------------------------------------------------------------- |
 | VPC (subnets, security groups) | rede base — desenho de saída em aberto, ver seção própria |
 | RDS PostgreSQL                 | banco da aplicação                                           |
-| ECR                            | registry das imagens`quadra-api` / `quadra-web`            |
+| ECR                            | registry privado da imagem `quadra-api`                       |
 | ECS Fargate                    | execução da API                                              |
 | ALB                            | entrada HTTPS da API                                           |
 | S3                             | uploads e build estático do frontend                          |
@@ -33,9 +34,10 @@ Recursos previstos:
 
 **Primeira implementação: simples.** Arquivos `.tf` planos na raiz de `terraform/`, state remoto em S3 com lock. Sem módulos próprios, sem camada de abstração, sem `terragrunt` — modularizar só quando houver o segundo ambiente pedindo reuso real.
 
-> Status: backend remoto, locking e fundação de rede provisionados. Recursos de
-> aplicação, banco de dados e computação ainda não foram iniciados; o Docker
-> Compose local segue sendo o ambiente de desenvolvimento.
+> Status: backend remoto, locking, rede, Security Groups, ECR, ECS Cluster, IAM
+> básico das tasks e CloudWatch Log Group provisionados. Banco de dados, ALB,
+> ECS Service e tasks ainda não foram iniciados; o Docker Compose local segue
+> sendo o ambiente de desenvolvimento.
 
 ## Evolução incremental da implementação
 
@@ -62,6 +64,10 @@ continua com um único root module e arquivos `.tf` planos em `terraform/`.
 > Etapa 1 concluída: `feature/terraform-network` provisionou a VPC, duas subnets
 > públicas, duas privadas, Internet Gateway e route tables, sem NAT Gateway.
 
+> Etapas 2 e 3 concluídas: os Security Groups foram provisionados e
+> `feature/terraform-container-platform` criou o ECR compartilhado da API, o ECS
+> Cluster, as roles de execução e da aplicação e o log group da API.
+
 Os arquivos Terraform serão separados por responsabilidade apenas quando cada
 entrega precisar deles, por exemplo: `locals.tf`, `network.tf`,
 `security_groups.tf`, `ecr.tf`, `database.tf`, `ecs.tf`, `alb.tf`,
@@ -73,9 +79,9 @@ adoção, todo `terraform apply` manual continuará exigindo um `plan` atualizad
 e revisado. Os CDs da API e do frontend serão implementados nos respectivos
 repositórios quando as dependências AWS de cada aplicação existirem.
 
-O escopo definitivo do ECR deve ser confirmado na terceira entrega: o fluxo de
-deploy atual prevê imagem Docker para a API e build estático do frontend em S3,
-embora a relação de recursos deste documento ainda mencione imagens de ambos.
+O escopo do ECR foi confirmado na terceira entrega: existe um único repositório
+privado compartilhado, `quadra-api`, para a imagem Docker da API. O frontend
+continuará como build estático publicado em S3, sem imagem própria no ECR.
 
 ## Ambiente único (decidido)
 

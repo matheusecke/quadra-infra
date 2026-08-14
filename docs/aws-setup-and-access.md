@@ -117,8 +117,33 @@ fixos. O acesso público configurado no grupo do ALB não expõe atualmente um
 endpoint, pois o ALB ainda não foi provisionado. Após a criação dos grupos e
 regras, `terraform plan` confirmou ausência de diferenças.
 
-Nenhum recurso de aplicação, banco de dados ou computação foi provisionado até
-este ponto.
+### Plataforma de containers
+
+A base necessária para receber futuramente a API foi provisionada:
+
+- **ECR:** repositório privado compartilhado `quadra-api`, com tags imutáveis,
+  scan básico no push e criptografia padrão AES-256. A lifecycle policy mantém
+  as 10 imagens tagged mais recentes e remove imagens untagged após um dia.
+- **ECS Cluster:** `quadra-production-ecs-cluster`, sem serviços ou tasks e com
+  Container Insights desabilitado para evitar custo adicional nesta fase.
+- **CloudWatch Logs:** log group `/ecs/quadra-production-api`, com retenção de
+  14 dias.
+- **Execution role:** `quadra-production-ecs-execution-role`, com a policy
+  gerenciada `AmazonECSTaskExecutionRolePolicy` para o ECS obter imagens do ECR
+  e publicar logs.
+- **Task role:** `quadra-production-api-task-role`, sem policies de acesso nesta
+  fase. Permissões da aplicação serão adicionadas somente quando um serviço
+  realmente precisar delas.
+
+As roles de execução e da aplicação permanecem separadas para que permissões da
+infraestrutura de inicialização não sejam entregues ao código da API. O apply
+criou 7 recursos, sem alterações ou destruições, e o plan pós-apply confirmou
+ausência de diferenças.
+
+Ainda não foram provisionados RDS, ALB, target group, listeners, task definition
+ou ECS Service. Portanto, não existem containers em execução nem novo endpoint
+público. Nesta etapa, os únicos custos variáveis são o armazenamento das imagens
+no ECR e a ingestão e retenção futura de logs no CloudWatch.
 
 ## Segurança
 

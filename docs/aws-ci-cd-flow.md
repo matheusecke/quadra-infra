@@ -184,7 +184,9 @@ AWS
 
 ### Fase 4 — infraestrutura da aplicação disponível
 
-**Status: etapa futura decidida, dependente dos recursos necessários.**
+**Status: parcialmente provisionada.** O ECR, o ECS Cluster, as roles básicas
+das tasks e o log group da API já existem. O ECS Service e os demais recursos
+necessários ao deploy ainda serão provisionados.
 
 À medida que o Terraform provisionar ECR, ECS, RDS, ALB, S3, CloudFront, IAM e
 os demais componentes, passará a existir infraestrutura suficiente para o CD
@@ -230,10 +232,10 @@ CD
         └── atualização do ECS Service
 ```
 
-O Terraform criará ECR, ECS Cluster, ECS Service, IAM Roles e os recursos
-relacionados. O GitHub Actions publicará uma nova versão da API nessa
-infraestrutura. Uma nova imagem não será publicada por meio de
-`terraform apply`.
+O Terraform já criou o ECR, o ECS Cluster e as roles básicas, e ainda criará o
+ECS Service e os recursos relacionados. O GitHub Actions publicará uma nova
+versão da API nessa infraestrutura. Uma nova imagem não será publicada por meio
+de `terraform apply`.
 
 ## CD do frontend
 
