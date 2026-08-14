@@ -1,2 +1,19 @@
 postgres-data/
 .env
+
+# Terraform
+.terraform/
+.state-backups/
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+terraform.tfvars
+backend.hcl
+.terraformrc
+terraform.rc

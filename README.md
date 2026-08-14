@@ -49,7 +49,11 @@ psql postgresql://postgres:postgres@localhost:5433/quadra
 
 ## AWS infrastructure
 
-TODO — not implemented yet.
+The remote state bootstrap (S3 bucket and Terraform configuration) is located
+in [`terraform/`](terraform/). See
+[`docs/aws-setup-and-access.md`](docs/aws-setup-and-access.md) for the current
+operational state and [`docs/ROADMAP.md`](docs/ROADMAP.md) for architecture
+decisions.
 
 ## License
 
