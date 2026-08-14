@@ -98,6 +98,25 @@ nas quatro subnets; o ECS deverá usar `assign_public_ip = true` explicitamente
 quando for implementado. Após o provisionamento da rede, `terraform plan`
 confirmou que a infraestrutura corresponde à configuração, sem diferenças.
 
+### Security Groups da aplicação
+
+Os Security Groups planejados para os componentes da aplicação foram
+provisionados na VPC do ambiente `production`:
+
+- **ALB:** `quadra-production-alb-sg` (`sg-0c34cf4762936407f`). Aceita tráfego
+  público TCP nas portas `80` e `443` e permite saída TCP `3001` somente para o
+  Security Group do ECS.
+- **ECS:** `quadra-production-ecs-sg` (`sg-061558ae133a81fc0`). Aceita entrada
+  TCP `3001` somente do Security Group do ALB. Permite saída TCP `443` para
+  serviços AWS e APIs HTTPS e TCP `5432` somente para o Security Group do RDS.
+- **RDS:** `quadra-production-rds-sg` (`sg-018a8c7c5b0997adc`). Aceita entrada
+  TCP `5432` somente do Security Group do ECS e não possui regra de saída.
+
+As relações internas utilizam referências entre Security Groups, sem IPs
+fixos. O acesso público configurado no grupo do ALB não expõe atualmente um
+endpoint, pois o ALB ainda não foi provisionado. Após a criação dos grupos e
+regras, `terraform plan` confirmou ausência de diferenças.
+
 Nenhum recurso de aplicação, banco de dados ou computação foi provisionado até
 este ponto.
 
