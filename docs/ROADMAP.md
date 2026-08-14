@@ -1,6 +1,10 @@
 # Roadmap de infraestrutura
 
-Decisões sobre provisionamento AWS e a abordagem de IaC deste projeto. Nada do que está descrito aqui está provisionado ainda — o Docker Compose local é o ambiente de desenvolvimento atual. Ver o [README](../README.md) principal para o que roda hoje de fato.
+Decisões sobre provisionamento AWS e a abordagem de IaC deste projeto. O
+bootstrap do remote state foi concluído, mas nenhum recurso AWS da aplicação
+foi provisionado; o Docker Compose local continua sendo o ambiente de
+desenvolvimento. Ver o estado operacional em
+[`aws-setup-and-access.md`](aws-setup-and-access.md).
 
 ## IaC: Terraform (decidido)
 
@@ -29,7 +33,9 @@ Recursos previstos:
 
 **Primeira implementação: simples.** Arquivos `.tf` planos na raiz de `terraform/`, state remoto em S3 com lock. Sem módulos próprios, sem camada de abstração, sem `terragrunt` — modularizar só quando houver o segundo ambiente pedindo reuso real.
 
-> Status: decisão registrada. Nada provisionado ainda; o Docker Compose local segue sendo o ambiente de desenvolvimento.
+> Status: backend remoto e locking provisionados. A infraestrutura AWS da
+> aplicação ainda não foi iniciada; o Docker Compose local segue sendo o
+> ambiente de desenvolvimento.
 
 ## Ambiente único (decidido)
 
