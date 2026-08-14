@@ -57,7 +57,6 @@ export AWS_PROFILE=quadra-admin
 
 ## Estado atual da infraestrutura
 
-- Nenhuma infraestrutura AWS da aplicação foi provisionada.
 - O bucket S3 `quadra-terraform-state-141145164743` foi provisionado em
   `us-east-1` para armazenar o state do Terraform.
 - O bucket possui versionamento habilitado e bloqueio completo de acesso
@@ -73,6 +72,34 @@ export AWS_PROFILE=quadra-admin
   o state lock normalmente.
 - Um backup local anterior à migração foi armazenado em
   `terraform/.state-backups/`, diretório ignorado pelo Git.
+
+### Rede da aplicação
+
+A fundação de rede do ambiente `production` foi provisionada com Terraform:
+
+- **VPC:** `vpc-0cfb1beb1d75d1142`, CIDR `10.0.0.0/16`, com suporte e
+  hostnames DNS habilitados.
+- **Subnet pública A:** `subnet-0375710b2838a8acb`, `us-east-1a`, CIDR
+  `10.0.1.0/24`.
+- **Subnet pública B:** `subnet-0bec1c5b85075d7bd`, `us-east-1b`, CIDR
+  `10.0.2.0/24`.
+- **Subnet privada A:** `subnet-0d614b2a1969257b7`, `us-east-1a`, CIDR
+  `10.0.11.0/24`.
+- **Subnet privada B:** `subnet-08b3e66f236eb2dbf`, `us-east-1b`, CIDR
+  `10.0.12.0/24`.
+- **Internet Gateway:** `igw-05e8decbac23dcc5d`, associado à VPC.
+- **Route table pública:** `rtb-0f08f3fcaebd9b284`, com rota
+  `0.0.0.0/0` para o Internet Gateway e associação às duas subnets públicas.
+- **Route table privada:** `rtb-0cf59786f0c60ae4a`, associada às duas
+  subnets privadas e sem rota para a internet.
+
+Não existe NAT Gateway. A atribuição automática de IP público está desabilitada
+nas quatro subnets; o ECS deverá usar `assign_public_ip = true` explicitamente
+quando for implementado. Após o provisionamento da rede, `terraform plan`
+confirmou que a infraestrutura corresponde à configuração, sem diferenças.
+
+Nenhum recurso de aplicação, banco de dados ou computação foi provisionado até
+este ponto.
 
 ## Segurança
 

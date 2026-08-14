@@ -1,9 +1,9 @@
 # Roadmap de infraestrutura
 
 Decisões sobre provisionamento AWS e a abordagem de IaC deste projeto. O
-bootstrap do remote state foi concluído, mas nenhum recurso AWS da aplicação
-foi provisionado; o Docker Compose local continua sendo o ambiente de
-desenvolvimento. Ver o estado operacional em
+bootstrap do remote state e a fundação de rede foram concluídos; nenhum recurso
+de aplicação, banco de dados ou computação foi provisionado, e o Docker Compose
+local continua sendo o ambiente de desenvolvimento. Ver o estado operacional em
 [`aws-setup-and-access.md`](aws-setup-and-access.md).
 
 ## IaC: Terraform (decidido)
@@ -33,9 +33,9 @@ Recursos previstos:
 
 **Primeira implementação: simples.** Arquivos `.tf` planos na raiz de `terraform/`, state remoto em S3 com lock. Sem módulos próprios, sem camada de abstração, sem `terragrunt` — modularizar só quando houver o segundo ambiente pedindo reuso real.
 
-> Status: backend remoto e locking provisionados. A infraestrutura AWS da
-> aplicação ainda não foi iniciada; o Docker Compose local segue sendo o
-> ambiente de desenvolvimento.
+> Status: backend remoto, locking e fundação de rede provisionados. Recursos de
+> aplicação, banco de dados e computação ainda não foram iniciados; o Docker
+> Compose local segue sendo o ambiente de desenvolvimento.
 
 ## Evolução incremental da implementação
 
@@ -58,6 +58,9 @@ continua com um único root module e arquivos `.tf` planos em `terraform/`.
 | 10 | `feature/github-oidc` | autenticação GitHub Actions → AWS e roles de automação |
 | 11 | `ci/terraform-plan` | evolução **opcional** para apresentar o `plan` nos pull requests |
 | 12 | `feature/terraform-email` | SES e permissões de envio; entrega **opcional e última** |
+
+> Etapa 1 concluída: `feature/terraform-network` provisionou a VPC, duas subnets
+> públicas, duas privadas, Internet Gateway e route tables, sem NAT Gateway.
 
 Os arquivos Terraform serão separados por responsabilidade apenas quando cada
 entrega precisar deles, por exemplo: `locals.tf`, `network.tf`,
@@ -134,7 +137,7 @@ Duas observações que valem independentemente da escolha:
 - **CloudFront** não é cobrado pela região do stack e sim por localização de borda / price class — é neutro nessa comparação;
 - **certificado ACM usado pelo CloudFront precisa estar em `us-east-1`** de qualquer forma. Aqui isso deixa de ser complicação, já que é a região do stack inteiro.
 
-## Desenho de rede: com ou sem NAT Gateway (inclinação registrada, decisão final na implementação)
+## Desenho de rede: sem NAT Gateway (decisão implementada)
 
 A task Fargate precisa de **saída** para a internet — ela baixa a imagem do ECR antes de o container subir, e depois chama SES e CloudWatch. Ela não precisa de **entrada**: quem fala com ela é só o ALB. Existem duas formas de dar essa saída, e elas diferem em custo e em profundidade de defesa.
 
@@ -175,7 +178,7 @@ Vale registrar também o que o NAT **não** resolve: ele não protege contra a a
 | Custo fixo de rede                  | ~US$ 33/mês | US$ 0        |                                        |
 | Ambiente pausado                    | ~US$ 51/mês | ~US$ 18/mês |                                        |
 
-### Inclinação atual: **sem NAT** (opção B)
+### Decisão implementada: **sem NAT** (opção B)
 
 **Tecnicamente, a opção A é a melhor.** Subnet privada com NAT é o desenho que se recomendaria para qualquer sistema com usuários reais, e a única razão de não adotá-lo aqui é custo — não é que o NAT tenha sido considerado desnecessário.
 
