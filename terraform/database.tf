@@ -13,8 +13,8 @@ resource "aws_db_subnet_group" "main" {
 resource "aws_db_instance" "main" {
   identifier = "${local.name_prefix}-db"
 
-  engine                   = "postgres"
-  engine_version           = "16.14"
+  engine         = "postgres"
+  engine_version = "16.14"
   # Avoids silent Extended Support charges; the major version must be upgraded
   # before PostgreSQL 16 leaves standard support.
   engine_lifecycle_support = "open-source-rds-extended-support-disabled"
