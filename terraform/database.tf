@@ -15,6 +15,8 @@ resource "aws_db_instance" "main" {
 
   engine                   = "postgres"
   engine_version           = "16.14"
+  # Avoids silent Extended Support charges; the major version must be upgraded
+  # before PostgreSQL 16 leaves standard support.
   engine_lifecycle_support = "open-source-rds-extended-support-disabled"
   instance_class           = "db.t4g.micro"
 
@@ -37,6 +39,7 @@ resource "aws_db_instance" "main" {
 
   parameter_group_name = "default.postgres16"
 
+  # One day is the current AWS Free Plan limit, not the intended long-term retention.
   backup_retention_period  = 1
   backup_window            = "06:00-06:30"
   delete_automated_backups = true
@@ -47,12 +50,16 @@ resource "aws_db_instance" "main" {
   allow_major_version_upgrade = false
   apply_immediately           = false
 
+  # Keep database observability within the current low-cost scope: seven days of
+  # Database Insights, without Enhanced Monitoring or continuous log exports.
   database_insights_mode                = "standard"
   performance_insights_enabled          = true
   performance_insights_retention_period = 7
   monitoring_interval                   = 0
   enabled_cloudwatch_logs_exports       = []
 
+  # Native RDS protection is the single deletion switch; lifecycle.prevent_destroy
+  # is intentionally not duplicated here.
   deletion_protection       = true
   skip_final_snapshot       = false
   final_snapshot_identifier = "${local.name_prefix}-db-final"

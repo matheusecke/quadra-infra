@@ -13,6 +13,7 @@ data "aws_iam_policy_document" "ecs_tasks_assume_role" {
 resource "aws_ecs_cluster" "main" {
   name = "${local.name_prefix}-ecs-cluster"
 
+  # Explicitly disabled to avoid Container Insights charges in this low-cost environment.
   setting {
     name  = "containerInsights"
     value = "disabled"

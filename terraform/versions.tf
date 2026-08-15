@@ -8,6 +8,7 @@ terraform {
     }
   }
 
+  # The bucket is managed in terraform_state.tf, but backend blocks cannot use variables.
   backend "s3" {
     bucket       = "quadra-terraform-state-141145164743"
     key          = "production/terraform.tfstate"

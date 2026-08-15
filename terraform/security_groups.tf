@@ -18,6 +18,7 @@ resource "aws_security_group" "ecs" {
   })
 }
 
+# No egress rule by design: the database does not initiate outbound connections.
 resource "aws_security_group" "rds" {
   name        = "${local.name_prefix}-rds-sg"
   description = "Controls traffic for the Quadra RDS instance"

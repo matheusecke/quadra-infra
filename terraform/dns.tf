@@ -6,6 +6,8 @@ resource "aws_route53_zone" "main" {
     Name        = "appquadra.com.br"
   })
 
+  # Prevents accidental recreation because a new hosted zone gets different name
+  # servers, which would require a manual DNS delegation update at Registro.br.
   lifecycle {
     prevent_destroy = true
   }
