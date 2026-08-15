@@ -67,3 +67,23 @@ output "route53_name_servers" {
   description = "Name servers to configure for appquadra.com.br at Registro.br"
   value       = aws_route53_zone.main.name_servers
 }
+
+output "api_url" {
+  description = "Public HTTPS URL of the Quadra API"
+  value       = "https://api.appquadra.com.br"
+}
+
+output "alb_dns_name" {
+  description = "AWS DNS name of the Application Load Balancer"
+  value       = aws_lb.main.dns_name
+}
+
+output "ecs_service_name" {
+  description = "Name of the Quadra API ECS service"
+  value       = aws_ecs_service.api.name
+}
+
+output "api_task_definition_family" {
+  description = "Family of the Quadra API ECS task definition"
+  value       = aws_ecs_task_definition.api.family
+}
