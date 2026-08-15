@@ -20,6 +20,7 @@ resource "aws_internet_gateway" "main" {
   })
 }
 
+# Automatic public IP assignment stays off; ECS tasks opt in through assign_public_ip.
 resource "aws_subnet" "public_a" {
   vpc_id            = aws_vpc.main.id
   cidr_block        = "10.0.1.0/24"
@@ -84,6 +85,8 @@ resource "aws_route_table_association" "public_b" {
   route_table_id = aws_route_table.public.id
 }
 
+# Intentionally has no internet route: the current design has no NAT Gateway,
+# and only the RDS uses these private subnets.
 resource "aws_route_table" "private" {
   vpc_id = aws_vpc.main.id
 

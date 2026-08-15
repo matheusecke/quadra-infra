@@ -1,9 +1,10 @@
 # Roadmap de infraestrutura
 
 Decisões sobre provisionamento AWS e a abordagem de IaC deste projeto. O
-backend remoto, a fundação de rede e a base da plataforma de containers foram
-provisionados; ainda não existem banco de dados, ALB, ECS Service ou tasks em
-execução. O Docker Compose local continua sendo o ambiente de desenvolvimento.
+backend remoto, a fundação de rede, a base da plataforma de containers, o banco
+de dados, a zona DNS pública, o ALB e o ECS Service foram provisionados. O
+serviço permanece pausado, sem tasks em execução, e o Docker Compose local
+continua sendo o ambiente de desenvolvimento.
 Ver o estado operacional em
 [`aws-setup-and-access.md`](aws-setup-and-access.md).
 
@@ -35,8 +36,9 @@ Recursos previstos:
 **Primeira implementação: simples.** Arquivos `.tf` planos na raiz de `terraform/`, state remoto em S3 com lock. Sem módulos próprios, sem camada de abstração, sem `terragrunt` — modularizar só quando houver o segundo ambiente pedindo reuso real.
 
 > Status: backend remoto, locking, rede, Security Groups, ECR, ECS Cluster, IAM
-> básico das tasks e CloudWatch Log Group provisionados. Banco de dados, ALB,
-> ECS Service e tasks ainda não foram iniciados; o Docker Compose local segue
+> básico das tasks, CloudWatch Log Group, RDS, zona pública do Route 53, ALB,
+> certificado, task definition e ECS Service provisionados. O serviço permanece
+> com `desired_count = 0`, sem tasks em execução; o Docker Compose local segue
 > sendo o ambiente de desenvolvimento.
 
 ## Evolução incremental da implementação
@@ -67,6 +69,14 @@ continua com um único root module e arquivos `.tf` planos em `terraform/`.
 > Etapas 2 e 3 concluídas: os Security Groups foram provisionados e
 > `feature/terraform-container-platform` criou o ECR compartilhado da API, o ECS
 > Cluster, as roles de execução e da aplicação e o log group da API.
+
+> Etapa 4 concluída: `feature/terraform-database` provisionou o DB subnet group
+> e o RDS PostgreSQL privado. A zona pública `appquadra.com.br` foi criada no
+> Route 53 no início da etapa 5 e delegada pelo Registro.br.
+
+> Etapa 5 provisionada: ALB, certificado ACM, registros DNS, target group, task
+> definition, IAM adicional e ECS Service foram criados. O serviço permanece
+> pausado até a publicação da primeira imagem compatível da API.
 
 Os arquivos Terraform serão separados por responsabilidade apenas quando cada
 entrega precisar deles, por exemplo: `locals.tf`, `network.tf`,
@@ -182,6 +192,82 @@ O custo recorrente principal é a instância, estimada em cerca de US$ 12/mês e
 a franquia. Database Insights Standard, DB subnet group e deletion protection
 não acrescentam custo direto. Snapshots preservados e o crescimento automático
 do volume continuam sendo cobrados.
+
+## API pública: HTTPS no ALB e serviço ECS inicialmente pausado (provisionado)
+
+A API usa `https://api.appquadra.com.br`; o domínio raiz permanece reservado
+para o frontend. A zona pública `appquadra.com.br` é gerenciada pelo Route 53 e
+os quatro name servers da AWS foram delegados no Registro.br. A configuração da
+API acrescentou:
+
+- certificado ACM específico para `api.appquadra.com.br`, validado por registro
+  DNS criado pelo Terraform;
+- ALB público nas duas subnets públicas, com deletion protection habilitada;
+- listener HTTP na porta 80 apenas para redirecionamento permanente para HTTPS;
+- listener HTTPS na porta 443 com a policy
+  `ELBSecurityPolicy-TLS13-1-2-2021-06`, encaminhando ao target group HTTP na
+  porta `3001`;
+- alias `A` no Route 53 apontando `api.appquadra.com.br` para o ALB;
+- target group do tipo `ip`, deregistration delay de 30 segundos e health check
+  em `/health`: intervalo 30 s, timeout 5 s, dois sucessos para saudável, três
+  falhas para não saudável e resposta esperada `200`.
+
+Somente HTTPS será usado pela aplicação. Manter a porta 80 para redirecionar é
+uma prática comum e não transmite conteúdo da API em HTTP: o ALB responde com o
+redirecionamento antes de encaminhar qualquer requisição ao container. O
+certificado ACM público não tem custo adicional, enquanto o ALB permanece
+cobrado continuamente, estimado em cerca de US$ 16/mês mais LCUs, mesmo com o
+serviço pausado. Access logs do ALB e WAF ficam fora desta fase; devem ser
+reavaliados antes de receber usuários reais ou quando houver requisito de
+auditoria.
+
+A task definition da API usa Fargate on-demand, Linux `X86_64`, `0.25` vCPU e
+`0.5` GiB, com container `api` na porta `3001`. O processo init do runtime é
+habilitado para tratar corretamente processos filhos. A task permanece nas
+subnets públicas com IP público, conforme a decisão sem NAT, e recebe tráfego na
+porta da API apenas do Security Group do ALB.
+
+O ECS Service nasce com `desired_count = 0`: a infraestrutura pode ser criada
+antes de existir uma imagem válida e não gera custo de task Fargate. A referência
+inicial usa a tag `bootstrap` do ECR apenas para tornar a task definition válida;
+ela não será executada nessa condição. Depois que o CI publicar a primeira
+imagem, o GitHub Actions registrará ou selecionará a revisão real e alterará a
+quantidade desejada. Por isso o Terraform ignora mudanças em `desired_count` e
+`task_definition`: esses dois campos pertencem ao ciclo de deploy da aplicação,
+enquanto a estrutura da task continua declarada no Terraform. Alterar CPU,
+memória, secrets ou variáveis cria uma nova revisão, mas o CI ainda precisa
+mandar o serviço adotar essa revisão.
+
+O deploy usa mínimo saudável de 100%, máximo de 200%, grace period de health
+check de 60 segundos e circuit breaker com rollback. ECS Exec fica habilitado
+para diagnóstico sem abrir portas; a task role recebe somente as quatro ações
+`ssmmessages` necessárias, com `Resource = "*"` porque essas ações não oferecem
+escopo útil por ARN. O filesystem não é somente leitura porque o agente do ECS
+Exec precisa escrever durante a sessão.
+
+As variáveis não sensíveis da task são apenas `PORT=3001` e
+`CORS_ORIGIN=https://appquadra.com.br`. Localhost não é aceito pela API real: o
+frontend local continua usando a API local, evitando acesso acidental aos dados
+do ambiente AWS e incompatibilidade com o cookie de refresh `SameSite=Strict`.
+
+Os secrets seguem responsabilidades separadas:
+
+- o secret master do RDS, já gerado e preenchido pelo serviço, será injetado
+  integralmente como `DATABASE_SECRET`;
+- o Terraform cria somente o secret vazio
+  `quadra-production-api-jwt-secret`, com retenção de sete dias e
+  `prevent_destroy`; seu valor aleatório deve ser inserido manualmente antes da
+  primeira task ser executada;
+- o Terraform não lê nem grava os valores dos secrets, portanto eles não entram
+  no HCL nem no state;
+- a execution role recebe `secretsmanager:GetSecretValue` somente para esses
+  dois ARNs. A task role não recebe acesso aos secrets, pois a resolução ocorre
+  antes da inicialização do container.
+
+Antes do primeiro deploy, a API precisa aceitar `DATABASE_SECRET` no formato
+JSON produzido pelo RDS e construir internamente a conexão PostgreSQL, mantendo
+`DATABASE_URL` para desenvolvimento local. Sem essa compatibilidade e sem o
+valor do JWT secret, o serviço deve continuar com `desired_count = 0`.
 
 ## Desenho de rede: sem NAT Gateway (decisão implementada)
 

@@ -1,3 +1,5 @@
+# Shared across future environments: the same image artifact is deployed everywhere,
+# so this repository intentionally stays outside local.name_prefix.
 resource "aws_ecr_repository" "api" {
   name                 = "quadra-api"
   image_tag_mutability = "IMMUTABLE"
