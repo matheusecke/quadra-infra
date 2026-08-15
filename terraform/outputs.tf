@@ -62,3 +62,8 @@ output "database_master_secret_arn" {
   description = "ARN of the Secrets Manager secret containing the RDS master credentials"
   value       = aws_db_instance.main.master_user_secret[0].secret_arn
 }
+
+output "route53_name_servers" {
+  description = "Name servers to configure for appquadra.com.br at Registro.br"
+  value       = aws_route53_zone.main.name_servers
+}
