@@ -143,6 +143,46 @@ Duas observações que valem independentemente da escolha:
 - **CloudFront** não é cobrado pela região do stack e sim por localização de borda / price class — é neutro nessa comparação;
 - **certificado ACM usado pelo CloudFront precisa estar em `us-east-1`** de qualquer forma. Aqui isso deixa de ser complicação, já que é a região do stack inteiro.
 
+## Banco de dados: PostgreSQL privado e de baixo custo (decidido)
+
+O banco da aplicação será uma instância RDS PostgreSQL `16.14`, compatível com o
+major 16 usado no desenvolvimento local. A configuração prioriza baixo custo e
+proteção dos dados para o ambiente único de demonstração:
+
+- classe `db.t4g.micro`, Single-AZ, sem Availability Zone fixada;
+- armazenamento gp3 criptografado, começando em 20 GiB e com autoscaling
+  limitado a 50 GiB;
+- DB subnet group `quadra-production-db-subnet-group`, formado pelas duas
+  subnets privadas;
+- endpoint sem exposição pública, porta `5432` e acesso somente pelo Security
+  Group das tasks ECS;
+- banco lógico `quadra` e usuário administrativo `quadra_admin`;
+- senha master gerada pelo RDS e armazenada no Secrets Manager com as chaves
+  gerenciadas pela AWS, sem senha no HCL ou no state;
+- backups automáticos por 1 dia na janela `06:00-06:30` UTC e snapshot final
+  obrigatório em uma eventual exclusão. A retenção reduzida respeita a limitação
+  do AWS Free Plan atual e pode ser ampliada após a migração para o plano pago;
+- janela de manutenção aos domingos entre `07:00-08:00` UTC, com alterações
+  disruptivas adiadas para essa janela;
+- atualizações menores automáticas, atualização principal bloqueada e adesão
+  ao RDS Extended Support desabilitada para evitar cobrança futura silenciosa;
+- Database Insights Standard com 7 dias de histórico, sem Enhanced Monitoring,
+  exportação contínua de logs ou autenticação IAM nesta fase;
+- deletion protection nativa do RDS, sem duplicação com
+  `lifecycle.prevent_destroy`.
+
+O usuário administrativo não é o usuário da conta root AWS e também não recebe
+acesso irrestrito ao sistema operacional do RDS. Um usuário PostgreSQL específico
+para a aplicação, com menor privilégio, será criado quando o processo real de
+migrations estiver definido. A futura task definition consumirá o secret sem
+gravar a senha diretamente no Terraform.
+
+O custo recorrente principal é a instância, estimada em cerca de US$ 12/mês em
+`us-east-1`, além do armazenamento, do secret e de eventuais backups que excedam
+a franquia. Database Insights Standard, DB subnet group e deletion protection
+não acrescentam custo direto. Snapshots preservados e o crescimento automático
+do volume continuam sendo cobrados.
+
 ## Desenho de rede: sem NAT Gateway (decisão implementada)
 
 A task Fargate precisa de **saída** para a internet — ela baixa a imagem do ECR antes de o container subir, e depois chama SES e CloudWatch. Ela não precisa de **entrada**: quem fala com ela é só o ALB. Existem duas formas de dar essa saída, e elas diferem em custo e em profundidade de defesa.
