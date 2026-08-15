@@ -94,9 +94,9 @@ A fundação de rede do ambiente `production` foi provisionada com Terraform:
   subnets privadas e sem rota para a internet.
 
 Não existe NAT Gateway. A atribuição automática de IP público está desabilitada
-nas quatro subnets; o ECS deverá usar `assign_public_ip = true` explicitamente
-quando for implementado. Após o provisionamento da rede, `terraform plan`
-confirmou que a infraestrutura corresponde à configuração, sem diferenças.
+nas quatro subnets; o ECS usa `assign_public_ip = true` explicitamente. Após o
+provisionamento da rede, `terraform plan` confirmou que a infraestrutura
+corresponde à configuração, sem diferenças.
 
 ### Security Groups da aplicação
 
@@ -113,9 +113,9 @@ provisionados na VPC do ambiente `production`:
   TCP `5432` somente do Security Group do ECS e não possui regra de saída.
 
 As relações internas utilizam referências entre Security Groups, sem IPs
-fixos. O acesso público configurado no grupo do ALB não expõe atualmente um
-endpoint, pois o ALB ainda não foi provisionado. Após a criação dos grupos e
-regras, `terraform plan` confirmou ausência de diferenças.
+fixos. O endpoint público é exposto somente pelo ALB; a porta `3001` das tasks
+continua acessível apenas a partir do Security Group do ALB. Após a criação dos
+grupos e regras, `terraform plan` confirmou ausência de diferenças.
 
 ### Plataforma de containers
 
@@ -124,26 +124,49 @@ A base necessária para receber futuramente a API foi provisionada:
 - **ECR:** repositório privado compartilhado `quadra-api`, com tags imutáveis,
   scan básico no push e criptografia padrão AES-256. A lifecycle policy mantém
   as 10 imagens tagged mais recentes e remove imagens untagged após um dia.
-- **ECS Cluster:** `quadra-production-ecs-cluster`, sem serviços ou tasks e com
-  Container Insights desabilitado para evitar custo adicional nesta fase.
+- **ECS Cluster:** `quadra-production-ecs-cluster`, com o serviço pausado
+  `quadra-production-api-service`, sem tasks em execução e com Container
+  Insights desabilitado para evitar custo adicional nesta fase.
 - **CloudWatch Logs:** log group `/ecs/quadra-production-api`, com retenção de
   14 dias.
 - **Execution role:** `quadra-production-ecs-execution-role`, com a policy
-  gerenciada `AmazonECSTaskExecutionRolePolicy` para o ECS obter imagens do ECR
-  e publicar logs.
-- **Task role:** `quadra-production-api-task-role`, sem policies de acesso nesta
-  fase. Permissões da aplicação serão adicionadas somente quando um serviço
-  realmente precisar delas.
+  gerenciada `AmazonECSTaskExecutionRolePolicy` e acesso de leitura somente aos
+  secrets do RDS e do JWT.
+- **Task role:** `quadra-production-api-task-role`, com somente as permissões
+  `ssmmessages` necessárias ao ECS Exec.
+- **Task definition:** família `quadra-production-api`, Fargate `256/512`, com
+  container na porta `3001` e imagem inicial `quadra-api:bootstrap`.
+- **ECS Service:** `quadra-production-api-service`, com `desired_count = 0`,
+  ECS Exec e circuit breaker com rollback habilitados.
 
 As roles de execução e da aplicação permanecem separadas para que permissões da
-infraestrutura de inicialização não sejam entregues ao código da API. O apply
-criou 7 recursos, sem alterações ou destruições, e o plan pós-apply confirmou
-ausência de diferenças.
+infraestrutura de inicialização não sejam entregues ao código da API.
 
-Ainda não foram provisionados RDS, ALB, target group, listeners, task definition
-ou ECS Service. Portanto, não existem containers em execução nem novo endpoint
-público. Nesta etapa, os únicos custos variáveis são o armazenamento das imagens
-no ECR e a ingestão e retenção futura de logs no CloudWatch.
+### Banco de dados
+
+O RDS PostgreSQL privado `quadra-production-db` foi provisionado nas duas
+subnets privadas. A instância usa PostgreSQL `16.14`, classe `db.t4g.micro`,
+armazenamento gp3 criptografado e senha master gerenciada pelo Secrets Manager.
+Deletion protection está habilitada e o acesso na porta `5432` é permitido
+somente a partir do Security Group do ECS.
+
+### DNS e API pública
+
+- A zona pública `appquadra.com.br` usa os quatro name servers do Route 53,
+  delegados no Registro.br.
+- O certificado ACM de `api.appquadra.com.br` foi validado por DNS.
+- O ALB público `quadra-production-alb` usa as duas subnets públicas e possui
+  deletion protection habilitada.
+- HTTP na porta `80` redireciona para HTTPS na porta `443`; o listener HTTPS
+  encaminha ao target group HTTP na porta `3001`.
+- O alias `api.appquadra.com.br` aponta para o ALB.
+- O secret `quadra-production-api-jwt-secret` foi criado sem valor e permanece
+  protegido por `lifecycle.prevent_destroy`.
+
+O apply da etapa da API criou 13 recursos, sem alterações ou destruições. O
+plan executado após o apply confirmou `No changes`. O ALB já gera custo mesmo
+com o serviço pausado; não há custo de task Fargate enquanto
+`desired_count = 0`.
 
 ## Segurança
 
