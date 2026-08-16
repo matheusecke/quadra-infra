@@ -83,118 +83,92 @@ Essa fase tem como objetivos:
 
 Não haverá pipeline no `quadra-infra` nesta fase.
 
-### Fase 2 — CI básico do `quadra-infra`
+### Fase 2 — pacote coordenado de deploy da API
 
-**Status: próxima etapa decidida, ainda não implementada.**
+**Status: implementado na branch, aguardando merge e apply.** O pacote
+usa exatamente duas branches e segue integralmente
+`../../docs/planning-template.md` antes de qualquer implementação.
 
-O primeiro workflow de infraestrutura será criado depois que:
+#### Branch do `quadra-api`
 
-- existir uma estrutura Terraform real;
-- o backend remoto estiver funcionando;
-- `.terraform.lock.hcl` estiver presente;
-- os primeiros recursos estiverem estabilizados.
+`feature/aws-api-deployment` reúne:
 
-O workflow será exclusivamente de validação:
+- interpretação segura de `DATABASE_SECRET`, preservando `DATABASE_URL` para o
+  ambiente local;
+- ajustes de runtime e migrations definidos pela spec;
+- build e publicação de imagem imutável no ECR;
+- criação ou seleção da nova revisão da task definition;
+- atualização do ECS Service, rollback e verificação de saúde.
+
+#### Branch do `quadra-infra`
+
+`feature/aws-api-deployment-infrastructure` reúne:
+
+- CI básico com `terraform fmt -check`, `init -backend=false` e `validate` em
+  `pull_request` e `push` para `dev` e `main` (filtros de paths existentes),
+  sem credenciais AWS, `plan` ou `apply`;
+- integração GitHub OIDC;
+- role dedicada e de menor privilégio para o deploy da API.
+
+**Status: planejado, ainda não aplicado.** O workflow `.github/workflows/ci.yml` e
+os recursos OIDC/IAM estão definidos no código desta branch, mas o provedor OIDC
+e a role de deploy **não** devem ser tratados como provisionados até um
+`terraform apply` manual confirmado pelo usuário.
+
+O trust policy e as permissões exatas estão definidos na spec e materializados em
+`terraform/github_oidc.tf` nesta branch, pendentes de apply, e ficarão
+restritos ao repositório, referência e recursos necessários. Não serão usados
+Access Keys permanentes, credenciais do usuário humano nem o profile local
+`quadra-admin`.
+
+#### Ordem de integração e ativação
 
 ```text
-Pull Request
-      │
-      ▼
-GitHub Actions
-      │
-      ├── terraform fmt -check
-      ├── terraform init
-      └── terraform validate
+branches e PRs preparados separadamente
+        ↓
+branch do quadra-infra integrada
+        ↓
+plan novo → revisão → apply manual de OIDC/IAM
+        ↓
+JWT secret preenchido manualmente
+        ↓
+branch do quadra-api integrada em main
+        ↓
+CI existente
+        ↓
+build → ECR → revisão da task → ECS Service
+        ↓
+serviço estável + /health HTTP 200
 ```
 
-Essa etapa não executará `terraform apply`, não modificará recursos AWS e não
-automatizará o provisionamento. Conceitualmente, ela terá o mesmo papel dos CIs
-já existentes na API e no frontend: validar o código antes do merge.
+A branch da API não deve ser integrada antes de OIDC, IAM e JWT estarem
+prontos, pois o merge em `main` poderá disparar o primeiro deploy. O pacote
+termina somente quando `https://api.appquadra.com.br` responder por uma task
+saudável atrás do ALB.
 
-### Fase 3 — CI opcional de infraestrutura com `terraform plan`
+#### Detalhes do pipeline aprovado (Tasks 5–6)
+
+- o CI Terraform executa em `pull_request` e `push` para `dev` e `main`
+  (com os filtros de paths existentes), somente `fmt -check`,
+  `init -backend=false` e `validate`, sem credenciais AWS, `plan` ou `apply`;
+- o workflow `CI/CD` da API usa OIDC restrito a
+  `repo:matheusecke/quadra-api:ref:refs/heads/main`;
+- a imagem usa o SHA completo e imutável; reruns reutilizam a mesma imagem;
+- a action oficial registra a revision, executa `prisma migrate deploy` em task
+  isolada, atualiza o Service para uma task e espera estabilidade;
+- o circuit breaker faz rollback de deployments normais; o primeiro deploy é
+  recuperado por novo commit/push, com scale-to-zero manual opcional;
+- HTTP 200 em `https://api.appquadra.com.br/health` é a verificação final.
+
+### Evolução opcional posterior — CI de infraestrutura com `terraform plan`
 
 **Status: evolução opcional, ainda não implementada.** Só poderá ser considerada
 depois da estabilização do CI básico e da autenticação GitHub → AWS.
 
-```text
-Pull Request
-      │
-      ▼
-terraform fmt -check
-      │
-terraform init
-      │
-terraform validate
-      │
-terraform plan
-      │
-      ▼
-revisão das mudanças propostas
-```
-
 Ao contrário do CI básico, essa fase exige acesso ao backend remoto, ao state do
-Terraform e às APIs AWS. A autenticação deverá usar credenciais temporárias:
-
-```text
-GitHub Actions
-      ↓
-GitHub OIDC
-      ↓
-AWS STS
-      ↓
-IAM Role
-      ↓
-AWS
-```
-
-Não serão usados na automação:
-
-- Access Key permanente;
-- Secret Access Key permanente;
-- credenciais do usuário `matheusecke`;
-- profile local `quadra-admin`.
-
-A identidade humana usada localmente e as identidades de automação permanecerão
-separadas:
-
-```text
-Desenvolvimento local
-
-matheusecke
-    ↓
-aws login
-    ↓
-quadra-admin
-    ↓
-AWS
-
-
-Automação
-
-GitHub Actions
-    ↓
-GitHub OIDC
-    ↓
-AWS STS
-    ↓
-IAM Role
-    ↓
-AWS
-```
-
-### Fase 4 — infraestrutura da aplicação disponível
-
-**Status: parcialmente provisionada.** O ECR, o ECS Cluster, as roles básicas
-das tasks e o log group da API já existem. O ECS Service e os demais recursos
-necessários ao deploy ainda serão provisionados.
-
-À medida que o Terraform provisionar ECR, ECS, RDS, ALB, S3, CloudFront, IAM e
-os demais componentes, passará a existir infraestrutura suficiente para o CD
-das aplicações.
-
-Essa fase não depende da conclusão de toda a infraestrutura. O CD de cada
-repositório pode ser introduzido assim que suas próprias dependências estiverem
-disponíveis e estabilizadas.
+Terraform e às APIs AWS. A autenticação deverá usar a identidade OIDC apropriada
+e permissões separadas das usadas pelo deploy da API. O plan continuará sendo
+apenas um artefato de revisão, nunca autorização para apply.
 
 ## CD da API
 
@@ -209,7 +183,10 @@ CI
 ```
 
 O `quadra-api` possui CI para as verificações da aplicação, mas ainda não possui
-CD para a AWS.
+CD para a AWS. ECR, RDS, ALB, task definition e ECS Service já estão
+provisionados; o serviço permanece pausado com `desired_count = 0` porque ainda
+faltam a compatibilidade com `DATABASE_SECRET`, o valor do JWT e a automação de
+deploy.
 
 ### Estado futuro decidido
 
@@ -232,10 +209,18 @@ CD
         └── atualização do ECS Service
 ```
 
-O Terraform já criou o ECR, o ECS Cluster e as roles básicas, e ainda criará o
-ECS Service e os recursos relacionados. O GitHub Actions publicará uma nova
-versão da API nessa infraestrutura. Uma nova imagem não será publicada por meio
-de `terraform apply`.
+O Terraform já criou ECR, ECS Cluster, roles das tasks, RDS, ALB, task
+definition e ECS Service. A identidade OIDC e a role de deploy da API estão
+**planejadas** nesta branch e só passam a existir após `apply` confirmado. O
+workflow `CI/CD` da API autentica via OIDC com trust restrito a
+`repo:matheusecke/quadra-api:ref:refs/heads/main`, publica a imagem com tag do
+SHA completo (reruns reutilizam o mesmo artefato), registra a revision da task,
+executa `prisma migrate deploy` em task isolada, escala o Service para uma task,
+aguarda estabilidade e valida HTTP 200 em
+`https://api.appquadra.com.br/health`. Imagem e deploy de aplicação nunca
+passarão por `terraform apply`. O circuit breaker do ECS faz rollback em
+deployments normais; falha no primeiro deploy exige novo commit/push ou,
+opcionalmente, scale-to-zero manual antes de nova tentativa.
 
 ## CD do frontend
 
@@ -385,68 +370,61 @@ quadra-web
 └── CI
 
 quadra-infra
-└── Terraform manual
+├── Terraform manual
+└── infraestrutura da API provisionada
+    └── ECS Service pausado
 
 
         ↓
 
 
-PRÓXIMA EVOLUÇÃO
+PACOTE DE DEPLOY DA API — DUAS BRANCHES
 
 quadra-api
-└── CI
+└── feature/aws-api-deployment
+    ├── runtime compatível com DATABASE_SECRET
+    └── CI + CD → ECR → ECS
+
+
+quadra-infra
+└── feature/aws-api-deployment-infrastructure
+    ├── CI: fmt + validate
+    └── OIDC + role de deploy da API
+
+
+        ↓
+
+
+ORDEM DE ATIVAÇÃO
+
+infra merge → plan revisado → apply manual
+        ↓
+JWT preenchido
+        ↓
+API merge → build → ECR → ECS → /health HTTP 200
+
+
+        ↓
+
+
+HOSPEDAGEM DO FRONTEND
 
 quadra-web
-└── CI
+└── CI atual; CD somente após S3 e CloudFront
 
 quadra-infra
-└── CI
-    ├── fmt
-    └── validate
+└── próxima etapa: frontend hosting
+    └── S3 privado → CloudFront
 
 
         ↓
 
 
-EVOLUÇÃO OPCIONAL DO CI
+EVOLUÇÕES OPCIONAIS
 
 quadra-infra
-└── CI
-    ├── fmt
-    ├── validate
-    └── plan
-
-GitHub
-└── OIDC → AWS
-
-
-        ↓
-
-
-INFRA DISPONÍVEL
-
-quadra-api
-└── CI + CD
-    └── ECR → ECS
-
-quadra-web
-└── CI + CD
-    └── S3 → CloudFront
-
-quadra-infra
-└── CI básico
-    ├── plan automático, se adotado
-    └── apply manual
-
-
-        ↓
-
-
-OPCIONAL FUTURO
-
-quadra-infra
-└── CI + CD
-    └── apply automatizado
+├── plan automático em PR
+└── apply automatizado, se futuramente aprovado
 ```
 
 ## Princípios

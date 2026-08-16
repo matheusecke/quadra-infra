@@ -144,6 +144,14 @@ resource "aws_ecs_task_definition" "api" {
         {
           name  = "CORS_ORIGIN"
           value = "https://appquadra.com.br"
+        },
+        {
+          name  = "DATABASE_NAME"
+          value = "quadra"
+        },
+        {
+          name  = "DATABASE_SCHEMA"
+          value = "public"
         }
       ]
 

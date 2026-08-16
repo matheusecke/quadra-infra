@@ -150,6 +150,10 @@ armazenamento gp3 criptografado e senha master gerenciada pelo Secrets Manager.
 Deletion protection está habilitada e o acesso na porta `5432` é permitido
 somente a partir do Security Group do ECS.
 
+O acesso administrativo manual é feito pelo AWS CloudShell em modo VPC, usando
+o Security Group do ECS. O procedimento completo, incluindo execução de scripts
+SQL, está em [`database-access.md`](database-access.md).
+
 ### DNS e API pública
 
 - A zona pública `appquadra.com.br` usa os quatro name servers do Route 53,
