@@ -216,6 +216,18 @@ a franquia. Database Insights Standard, DB subnet group e deletion protection
 não acrescentam custo direto. Snapshots preservados e o crescimento automático
 do volume continuam sendo cobrados.
 
+### Acesso administrativo manual (decidido)
+
+Expor a instância na internet para administrá-la com um cliente gráfico foi
+avaliado e descartado: o RDS não aceita trocar de subnets dentro da mesma VPC,
+de modo que a mudança exigiria recriar a instância. O banco permanece privado.
+
+A administração manual é feita pelo AWS CloudShell em modo VPC, associado ao
+Security Group das tasks ECS. Não há custo adicional, bastion nem alteração de
+infraestrutura. A limitação aceita é o acesso ser por terminal `psql`, e não por
+cliente gráfico. O procedimento está em
+[`database-access.md`](database-access.md).
+
 ## API pública: HTTPS no ALB e serviço ECS inicialmente pausado (provisionado)
 
 A API usa `https://api.appquadra.com.br`; o domínio raiz permanece reservado
