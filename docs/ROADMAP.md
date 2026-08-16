@@ -43,25 +43,29 @@ Recursos previstos:
 
 ## Evolução incremental da implementação
 
-A infraestrutura será acrescentada em entregas pequenas e revisáveis. Cada
-branch parte de `dev` atualizada e reúne recursos com a mesma responsabilidade.
-Esses agrupamentos são unidades de trabalho, não módulos Terraform: o projeto
-continua com um único root module e arquivos `.tf` planos em `terraform/`.
+A implementação será acrescentada em entregas pequenas e revisáveis. As
+entregas de infraestrutura partem de `dev` atualizada no `quadra-infra`; as da
+API partem de `main` atualizada no `quadra-api`. Um pacote coordenado entre os
+dois repositórios continua usando branches, validações e PRs separados.
 
-| Ordem | Branch sugerida | Escopo principal |
-| --- | --- | --- |
-| 1 | `feature/terraform-network` | nomes e tags comuns, VPC, subnets públicas e privadas, Internet Gateway e rotas públicas, sem NAT Gateway |
-| 2 | `feature/terraform-security-groups` | security groups do ALB, ECS e RDS e suas relações de acesso |
-| 3 | `feature/terraform-container-platform` | ECR, ECS Cluster, IAM básico da task e logs no CloudWatch |
-| 4 | `feature/terraform-database` | DB subnet group, RDS PostgreSQL e estratégia de credenciais |
-| 5 | `feature/terraform-api-service` | ALB, target group, listener, task definition e ECS Service da API |
-| 6 | `feature/terraform-frontend-hosting` | bucket privado do frontend, CloudFront e acesso entre eles |
-| 7 | `feature/terraform-app-storage` | bucket de uploads da aplicação e permissões necessárias |
-| 8 | `feature/terraform-operations` | mecanismo de pausa e retomada e scheduler do RDS |
-| 9 | `ci/terraform-validation` | CI básico com `fmt -check`, `init` e `validate`, sem alterar a AWS |
-| 10 | `feature/github-oidc` | autenticação GitHub Actions → AWS e roles de automação |
-| 11 | `ci/terraform-plan` | evolução **opcional** para apresentar o `plan` nos pull requests |
-| 12 | `feature/terraform-email` | SES e permissões de envio; entrega **opcional e última** |
+Os agrupamentos de infraestrutura são unidades de trabalho, não módulos
+Terraform: o projeto continua com um único root module e arquivos `.tf` planos
+em `terraform/`.
+
+| Ordem | Repositório | Branch sugerida | Escopo principal |
+| --- | --- | --- | --- |
+| 1 | `quadra-infra` | `feature/terraform-network` | nomes e tags comuns, VPC, subnets públicas e privadas, Internet Gateway e rotas públicas, sem NAT Gateway |
+| 2 | `quadra-infra` | `feature/terraform-security-groups` | security groups do ALB, ECS e RDS e suas relações de acesso |
+| 3 | `quadra-infra` | `feature/terraform-container-platform` | ECR, ECS Cluster, IAM básico da task e logs no CloudWatch |
+| 4 | `quadra-infra` | `feature/terraform-database` | DB subnet group, RDS PostgreSQL e estratégia de credenciais |
+| 5 | `quadra-infra` | `feature/terraform-api-service` | ALB, target group, listener, task definition e ECS Service da API |
+| 6 | `quadra-api` | `feature/aws-api-deployment` | suporte seguro a `DATABASE_SECRET`, ajustes de runtime, CD e primeiro deploy saudável da API |
+| 6 | `quadra-infra` | `feature/aws-api-deployment-infrastructure` | CI básico do Terraform, OIDC e role de menor privilégio para o deploy da API |
+| 7 | `quadra-infra` | `feature/terraform-frontend-hosting` | bucket privado do frontend, CloudFront e acesso entre eles |
+| 8 | `quadra-infra` | `feature/terraform-operations` | mecanismo de pausa e retomada e scheduler do RDS |
+| 9 | `quadra-infra` | `feature/terraform-plan-ci` | evolução **opcional** para apresentar o `plan` nos pull requests |
+| 10 | `quadra-infra` | `feature/terraform-email` | SES e permissões de envio; entrega **opcional** |
+| 11 | `quadra-infra` | `feature/terraform-app-storage` | bucket de uploads da aplicação e permissões necessárias; entrega **opcional e última**, sem uso definido na API ainda |
 
 > Etapa 1 concluída: `feature/terraform-network` provisionou a VPC, duas subnets
 > públicas, duas privadas, Internet Gateway e route tables, sem NAT Gateway.
@@ -78,6 +82,25 @@ continua com um único root module e arquivos `.tf` planos em `terraform/`.
 > definition, IAM adicional e ECS Service foram criados. O serviço permanece
 > pausado até a publicação da primeira imagem compatível da API.
 
+> A etapa 6 usa somente duas branches, uma por repositório, e deve seguir integralmente
+> `../../docs/planning-template.md`: primeiro fecha e aprova a spec
+> cross-repository; depois produz e aprova o plano; somente então inicia a
+> implementação.
+> A branch de infraestrutura deve ser integrada e aplicada antes do merge da
+> branch da API, pois esse merge poderá disparar o primeiro deploy.
+
+> **Etapa 6 — Tasks 5–6 (pacote de deploy): planejadas, ainda não aplicadas.**
+> O CI básico do Terraform (`fmt -check`, `init -backend=false`, `validate` em
+> `pull_request`/`push` para `dev` e `main`, com filtros de paths), o provedor
+> OIDC GitHub e a role de menor privilégio para o deploy da API estão definidos
+> no código e na documentação desta branch, mas **não** devem ser tratados como
+> provisionados até `terraform apply` manual confirmado. O workflow `CI/CD` da
+> API (OIDC restrito a `repo:matheusecke/quadra-api:ref:refs/heads/main`, imagem
+> com SHA imutável, `prisma migrate deploy` isolado, circuit breaker e
+> verificação HTTP 200 em `https://api.appquadra.com.br/health`) segue o mesmo
+> status: implementado no repositório da API, aguardando integração e primeiro
+> deploy saudável.
+
 Os arquivos Terraform serão separados por responsabilidade apenas quando cada
 entrega precisar deles, por exemplo: `locals.tf`, `network.tf`,
 `security_groups.tf`, `ecr.tf`, `database.tf`, `ecs.tf`, `alb.tf`,
@@ -86,8 +109,8 @@ arquivos vazios ou abstrações antecipadas.
 
 O `terraform plan` automatizado no CI é opcional. Independentemente de sua
 adoção, todo `terraform apply` manual continuará exigindo um `plan` atualizado
-e revisado. Os CDs da API e do frontend serão implementados nos respectivos
-repositórios quando as dependências AWS de cada aplicação existirem.
+e revisado. O CD da API validará ECR, ECS, secrets, banco, health check e o
+endpoint público de ponta a ponta.
 
 O escopo do ECR foi confirmado na terceira entrega: existe um único repositório
 privado compartilhado, `quadra-api`, para a imagem Docker da API. O frontend
@@ -365,7 +388,7 @@ Nada disso é código ainda. As formas possíveis, da mais simples para a mais e
 
 ## E-mail transacional (esqueci minha senha)
 
-**Status: evolução opcional e última da sequência de implementação.** O fluxo
+**Status: evolução opcional da sequência de implementação.** O fluxo
 de recuperação de senha ainda precisa ser implementado de forma coordenada no
 `quadra-api` e no `quadra-web`; a infraestrutura de e-mail só será criada
 quando essa funcionalidade entrar no escopo.

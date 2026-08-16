@@ -122,6 +122,18 @@ inspect → explain → propose one step → user executes → validate → docu
 - Keep architecture and trade-offs in `ROADMAP.md`, and pipeline evolution in
   `aws-ci-cd-flow.md`. Never describe planned resources as provisioned.
 
+## CI/CD boundaries
+
+- `.github/workflows/ci.yml` runs on `pull_request` and `push` to `dev` and
+  `main` (path-filtered to Terraform and the workflow file) and validates
+  formatting and configuration without backend access, AWS credentials, plan,
+  or apply.
+- Terraform owns the GitHub OIDC provider and deploy role. The API workflow
+  owns images, application task-definition revisions, migrations, Service
+  updates, and health verification.
+- The deployment role is never an identity for Terraform or application
+  runtime, and its permissions must not be expanded for convenience.
+
 ## Commits
 
 - Keep commits focused and do not create them unless explicitly requested.
