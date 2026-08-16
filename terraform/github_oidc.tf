@@ -23,10 +23,16 @@ data "aws_iam_policy_document" "api_deploy_assume_role" {
       values   = ["sts.amazonaws.com"]
     }
 
+    # GitHub embeds the immutable owner and repository IDs in the subject claim,
+    # so the token never carries the plain name. Both forms are listed because
+    # StringEquals matches any value and the claim format is set by GitHub.
     condition {
       test     = "StringEquals"
       variable = "token.actions.githubusercontent.com:sub"
-      values   = ["repo:matheusecke/quadra-api:ref:refs/heads/main"]
+      values = [
+        "repo:matheusecke/quadra-api:ref:refs/heads/main",
+        "repo:matheusecke@111882406/quadra-api@1208710284:ref:refs/heads/main",
+      ]
     }
   }
 }
@@ -101,8 +107,10 @@ data "aws_iam_policy_document" "api_deploy" {
       values   = ["512"]
     }
 
+    # Launch type arrives as a list, and a multivalued key never matches a plain
+    # StringEquals. ForAllValues also rejects a request that adds EC2.
     condition {
-      test     = "StringEquals"
+      test     = "ForAllValues:StringEquals"
       variable = "ecs:compute-compatibility"
       values   = ["FARGATE"]
     }

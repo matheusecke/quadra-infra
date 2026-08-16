@@ -146,6 +146,14 @@ resource "aws_ecs_task_definition" "api" {
           value = "https://appquadra.com.br"
         },
         {
+          name  = "DATABASE_HOST"
+          value = aws_db_instance.main.address
+        },
+        {
+          name  = "DATABASE_PORT"
+          value = tostring(aws_db_instance.main.port)
+        },
+        {
           name  = "DATABASE_NAME"
           value = "quadra"
         },
