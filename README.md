@@ -52,7 +52,7 @@ terraform apply "review.tfplan"
 ```
 
 `apply` is always manual and always preceded by a reviewed plan. CI runs only
-`fmt -check`, `init -backend=false` and `validate` — it never touches AWS.
+`fmt -check`, `init -backend=false` and `validate`.
 
 ## Deployments
 
