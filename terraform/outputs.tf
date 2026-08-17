@@ -87,3 +87,18 @@ output "api_task_definition_family" {
   description = "Family of the Quadra API ECS task definition"
   value       = aws_ecs_task_definition.api.family
 }
+
+output "frontend_bucket_name" {
+  description = "Name of the private S3 bucket holding the frontend build"
+  value       = aws_s3_bucket.frontend.bucket
+}
+
+output "frontend_distribution_id" {
+  description = "ID of the CloudFront distribution that serves the frontend"
+  value       = aws_cloudfront_distribution.frontend.id
+}
+
+output "frontend_url" {
+  description = "Public HTTPS URL of the Quadra frontend"
+  value       = "https://appquadra.com.br"
+}

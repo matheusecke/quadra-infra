@@ -24,22 +24,20 @@ Publicar uma nova versão da API ou do frontend não deve depender de
 
 ```text
 quadra-api
-└── CI existente
-    └── sem CD AWS
+└── CI + CD AWS
+    └── ECR → ECS, deploy saudável
 
 quadra-web
-└── CI existente
-    └── sem CD AWS
+└── CI + CD AWS
+    └── S3 → CloudFront, frontend no ar
 
 quadra-infra
-└── Terraform manual
-    └── sem GitHub Actions
+├── CI do Terraform (fmt + validate)
+└── apply manual
 ```
 
-Esse estado é intencional. Os workflows existentes da API e do frontend
-validam suas respectivas aplicações, mas ainda não publicam artefatos na AWS.
-No repositório de infraestrutura, o Terraform será usado local e manualmente
-durante a fase inicial.
+A automação de infraestrutura permanece limitada de propósito: o Terraform é
+executado local e manualmente, e o `apply` nunca sai de um pipeline.
 
 A execução manual permite compreender antes da automação:
 
@@ -85,9 +83,8 @@ Não haverá pipeline no `quadra-infra` nesta fase.
 
 ### Fase 2 — pacote coordenado de deploy da API
 
-**Status: implementado na branch, aguardando merge e apply.** O pacote
-usa exatamente duas branches e segue integralmente
-`../../docs/planning-template.md` antes de qualquer implementação.
+**Status: concluído.** O pacote usou exatamente duas branches e seguiu
+integralmente `../../docs/planning-template.md` antes da implementação.
 
 #### Branch do `quadra-api`
 
@@ -110,16 +107,12 @@ usa exatamente duas branches e segue integralmente
 - integração GitHub OIDC;
 - role dedicada e de menor privilégio para o deploy da API.
 
-**Status: planejado, ainda não aplicado.** O workflow `.github/workflows/ci.yml` e
-os recursos OIDC/IAM estão definidos no código desta branch, mas o provedor OIDC
-e a role de deploy **não** devem ser tratados como provisionados até um
-`terraform apply` manual confirmado pelo usuário.
+**Status: concluído.** O workflow `.github/workflows/ci.yml` está em `dev`, e o
+provedor OIDC e a role de deploy da API foram aplicados.
 
-O trust policy e as permissões exatas estão definidos na spec e materializados em
-`terraform/github_oidc.tf` nesta branch, pendentes de apply, e ficarão
-restritos ao repositório, referência e recursos necessários. Não serão usados
-Access Keys permanentes, credenciais do usuário humano nem o profile local
-`quadra-admin`.
+O trust policy e as permissões estão em `terraform/github_oidc.tf`, restritos ao
+repositório, à referência e aos recursos necessários. Não são usadas Access Keys
+permanentes, credenciais do usuário humano nem o profile local `quadra-admin`.
 
 #### Ordem de integração e ativação
 
@@ -175,20 +168,18 @@ apenas um artefato de revisão, nunca autorização para apply.
 ### Estado atual
 
 ```text
-push / pull request
-        ↓
-GitHub Actions
+merge / push main
         ↓
 CI
+        ↓
+CD → ECR → migrations → ECS Service
 ```
 
-O `quadra-api` possui CI para as verificações da aplicação, mas ainda não possui
-CD para a AWS. ECR, RDS, ALB, task definition e ECS Service já estão
-provisionados; o serviço permanece pausado com `desired_count = 0` porque ainda
-faltam a compatibilidade com `DATABASE_SECRET`, o valor do JWT e a automação de
-deploy.
+O `quadra-api` valida a aplicação no job `CI` e publica pelo job `Deploy`, que
+roda somente em `main`. O ECS Service roda com uma task e
+`https://api.appquadra.com.br/health` responde HTTP 200.
 
-### Estado futuro decidido
+### Desenho decidido
 
 ```text
 merge / push main
@@ -209,9 +200,8 @@ CD
         └── atualização do ECS Service
 ```
 
-O Terraform já criou ECR, ECS Cluster, roles das tasks, RDS, ALB, task
-definition e ECS Service. A identidade OIDC e a role de deploy da API estão
-**planejadas** nesta branch e só passam a existir após `apply` confirmado. O
+O Terraform criou ECR, ECS Cluster, roles das tasks, RDS, ALB, task definition,
+ECS Service, a identidade OIDC e a role de deploy da API. O
 workflow `CI/CD` da API autentica via OIDC com trust restrito a
 `repo:matheusecke/quadra-api:ref:refs/heads/main`, publica a imagem com tag do
 SHA completo (reruns reutilizam o mesmo artefato), registra a revision da task,
@@ -227,17 +217,18 @@ opcionalmente, scale-to-zero manual antes de nova tentativa.
 ### Estado atual
 
 ```text
-push / pull request
-        ↓
-GitHub Actions
+merge / push main
         ↓
 CI
+        ↓
+CD → S3 → invalidação do CloudFront
 ```
 
-O `quadra-web` possui CI para as verificações da aplicação, mas ainda não possui
-CD para a AWS.
+O `quadra-web` valida a aplicação no job `CI` e publica pelo job `Deploy`, que
+roda somente em `main`. O primeiro deploy foi concluído e o frontend responde em
+`https://appquadra.com.br`.
 
-### Estado futuro decidido
+### Desenho decidido
 
 ```text
 merge / push main
@@ -258,9 +249,47 @@ CD
         └── invalidação do CloudFront
 ```
 
-O Terraform criará e configurará o bucket S3, o CloudFront, o IAM necessário e
-os recursos relacionados. O GitHub Actions publicará o conteúdo do frontend
-nessa infraestrutura.
+O Terraform cria e configura o bucket S3, o CloudFront, o IAM necessário e os
+recursos relacionados. O GitHub Actions publica o conteúdo do frontend nessa
+infraestrutura.
+
+#### Pacote de hospedagem do frontend (concluído)
+
+O pacote usa duas branches, no mesmo padrão do deploy da API:
+
+- `quadra-infra/feature/terraform-frontend-hosting`: bucket privado, OAC,
+  distribuição CloudFront, certificado ACM do domínio raiz, alias `A`/`AAAA` no
+  Route 53 e a role `quadra-production-web-deploy-role`;
+- `quadra-web/feature/frontend-aws-deployment`: job `Deploy` acrescentado ao
+  workflow existente, que passa a ser `.github/workflows/ci-cd.yml` com nome
+  visível `CI/CD`, como no `quadra-api`. O job `CI` continua igual.
+
+A infraestrutura foi aplicada antes do merge da branch do frontend, porque esse
+merge em `main` dispara o deploy — e foi o que aconteceu no primeiro deploy.
+
+O job `Deploy` roda somente em `refs/heads/main`, depende do job `CI` e:
+
+- autentica por OIDC com a role exclusiva do frontend;
+- executa `npm ci` e `npm run build` com
+  `VITE_API_URL=https://api.appquadra.com.br`;
+- descobre o ID da distribuição pelo alias `appquadra.com.br`, do mesmo modo
+  que o workflow da API lê a configuração ativa do ECS Service em tempo de
+  execução, em vez de fixar valores gerados pela AWS;
+- envia `dist/assets/` com `max-age` de um ano e `immutable`, depois o restante
+  de `dist/` com `no-cache` e `--delete`;
+- invalida `/*` no CloudFront;
+- confirma HTTP 200 em `https://appquadra.com.br`, espelhando a verificação de
+  `/health` da API.
+
+Não há actions oficiais da AWS para S3 e CloudFront equivalentes às usadas no
+deploy da API (`amazon-ecr-login`, `amazon-ecs-render-task-definition`,
+`amazon-ecs-deploy-task-definition`). O caminho equivalente em simplicidade é a
+AWS CLI, já instalada nos runners do GitHub, sem action de terceiros.
+
+Objetos antigos em `assets/` não são removidos, porque o `--delete` roda apenas
+no segundo sync: apagar bundles antigos antes da publicação do novo
+`index.html` derrubaria a versão em uso durante o deploy. O acúmulo é de alguns
+KB por release e pode virar uma lifecycle rule se algum dia incomodar.
 
 ## Terraform CI versus Terraform CD
 
@@ -361,7 +390,7 @@ GitHub.
 ## Visão consolidada
 
 ```text
-AGORA
+PONTO DE PARTIDA
 
 quadra-api
 └── CI
@@ -407,14 +436,40 @@ API merge → build → ECR → ECS → /health HTTP 200
         ↓
 
 
-HOSPEDAGEM DO FRONTEND
+HOSPEDAGEM DO FRONTEND — DUAS BRANCHES
 
 quadra-web
-└── CI atual; CD somente após S3 e CloudFront
+└── feature/frontend-aws-deployment
+    └── CI atual + job Deploy → S3 → invalidação
 
 quadra-infra
-└── próxima etapa: frontend hosting
-    └── S3 privado → CloudFront
+└── feature/terraform-frontend-hosting
+    ├── S3 privado + OAC → CloudFront → Route 53
+    └── role de deploy do frontend
+
+        ↓
+
+ORDEM DE ATIVAÇÃO
+
+infra merge → plan revisado → apply manual
+        ↓
+web merge em main → build → S3 → CloudFront → HTTP 200
+
+
+        ↓
+
+
+HOJE
+
+quadra-api
+└── CI + CD → ECR → ECS → https://api.appquadra.com.br
+
+quadra-web
+└── CI + CD → S3 → CloudFront → https://appquadra.com.br
+
+quadra-infra
+├── CI: fmt + validate
+└── apply manual, sempre com plan revisado
 
 
         ↓

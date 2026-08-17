@@ -2,9 +2,10 @@
 
 Decisões sobre provisionamento AWS e a abordagem de IaC deste projeto. O
 backend remoto, a fundação de rede, a base da plataforma de containers, o banco
-de dados, a zona DNS pública, o ALB e o ECS Service foram provisionados. O
-serviço permanece pausado, sem tasks em execução, e o Docker Compose local
-continua sendo o ambiente de desenvolvimento.
+de dados, a zona DNS pública, o ALB, o ECS Service e a hospedagem do frontend
+foram provisionados. A API responde em `https://api.appquadra.com.br` e o
+frontend em `https://appquadra.com.br`; o Docker Compose local continua sendo o
+ambiente de desenvolvimento.
 Ver o estado operacional em
 [`aws-setup-and-access.md`](aws-setup-and-access.md).
 
@@ -18,7 +19,7 @@ Recursos previstos:
 | ------------------------------ | -------------------------------------------------------------- |
 | VPC (subnets, security groups) | rede base — desenho de saída em aberto, ver seção própria |
 | RDS PostgreSQL                 | banco da aplicação                                           |
-| ECR                            | registry privado da imagem `quadra-api`                       |
+| ECR                            | registry privado da imagem`quadra-api`                       |
 | ECS Fargate                    | execução da API                                              |
 | ALB                            | entrada HTTPS da API                                           |
 | S3                             | uploads e build estático do frontend                          |
@@ -37,9 +38,9 @@ Recursos previstos:
 
 > Status: backend remoto, locking, rede, Security Groups, ECR, ECS Cluster, IAM
 > básico das tasks, CloudWatch Log Group, RDS, zona pública do Route 53, ALB,
-> certificado, task definition e ECS Service provisionados. O serviço permanece
-> com `desired_count = 0`, sem tasks em execução; o Docker Compose local segue
-> sendo o ambiente de desenvolvimento.
+> certificado, task definition, ECS Service e a hospedagem do frontend
+> provisionados. A API roda com uma task e o frontend está publicado; o Docker
+> Compose local segue sendo o ambiente de desenvolvimento.
 
 ## Evolução incremental da implementação
 
@@ -52,20 +53,20 @@ Os agrupamentos de infraestrutura são unidades de trabalho, não módulos
 Terraform: o projeto continua com um único root module e arquivos `.tf` planos
 em `terraform/`.
 
-| Ordem | Repositório | Branch sugerida | Escopo principal |
-| --- | --- | --- | --- |
-| 1 | `quadra-infra` | `feature/terraform-network` | nomes e tags comuns, VPC, subnets públicas e privadas, Internet Gateway e rotas públicas, sem NAT Gateway |
-| 2 | `quadra-infra` | `feature/terraform-security-groups` | security groups do ALB, ECS e RDS e suas relações de acesso |
-| 3 | `quadra-infra` | `feature/terraform-container-platform` | ECR, ECS Cluster, IAM básico da task e logs no CloudWatch |
-| 4 | `quadra-infra` | `feature/terraform-database` | DB subnet group, RDS PostgreSQL e estratégia de credenciais |
-| 5 | `quadra-infra` | `feature/terraform-api-service` | ALB, target group, listener, task definition e ECS Service da API |
-| 6 | `quadra-api` | `feature/aws-api-deployment` | suporte seguro a `DATABASE_SECRET`, ajustes de runtime, CD e primeiro deploy saudável da API |
-| 6 | `quadra-infra` | `feature/aws-api-deployment-infrastructure` | CI básico do Terraform, OIDC e role de menor privilégio para o deploy da API |
-| 7 | `quadra-infra` | `feature/terraform-frontend-hosting` | bucket privado do frontend, CloudFront e acesso entre eles |
-| 8 | `quadra-infra` | `feature/terraform-operations` | mecanismo de pausa e retomada e scheduler do RDS |
-| 9 | `quadra-infra` | `feature/terraform-plan-ci` | evolução **opcional** para apresentar o `plan` nos pull requests |
-| 10 | `quadra-infra` | `feature/terraform-email` | SES e permissões de envio; entrega **opcional** |
-| 11 | `quadra-infra` | `feature/terraform-app-storage` | bucket de uploads da aplicação e permissões necessárias; entrega **opcional e última**, sem uso definido na API ainda |
+| Ordem | Repositório     | Branch sugerida                               | Escopo principal                                                                                                                |
+| ----- | ---------------- | --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| 1     | `quadra-infra` | `feature/terraform-network`                 | nomes e tags comuns, VPC, subnets públicas e privadas, Internet Gateway e rotas públicas, sem NAT Gateway                     |
+| 2     | `quadra-infra` | `feature/terraform-security-groups`         | security groups do ALB, ECS e RDS e suas relações de acesso                                                                   |
+| 3     | `quadra-infra` | `feature/terraform-container-platform`      | ECR, ECS Cluster, IAM básico da task e logs no CloudWatch                                                                      |
+| 4     | `quadra-infra` | `feature/terraform-database`                | DB subnet group, RDS PostgreSQL e estratégia de credenciais                                                                    |
+| 5     | `quadra-infra` | `feature/terraform-api-service`             | ALB, target group, listener, task definition e ECS Service da API                                                               |
+| 6     | `quadra-api`   | `feature/aws-api-deployment`                | suporte seguro a`DATABASE_SECRET`, ajustes de runtime, CD e primeiro deploy saudável da API                                  |
+| 6     | `quadra-infra` | `feature/aws-api-deployment-infrastructure` | CI básico do Terraform, OIDC e role de menor privilégio para o deploy da API                                                  |
+| 7     | `quadra-infra` | `feature/terraform-frontend-hosting`        | bucket privado do frontend, CloudFront e acesso entre eles                                                                      |
+| 8     | `quadra-infra` | `feature/terraform-operations`              | mecanismo de pausa e retomada e scheduler do RDS                                                                                |
+| 9     | `quadra-infra` | `feature/terraform-plan-ci`                 | evolução**opcional** para apresentar o `plan` nos pull requests                                                       |
+| 10    | `quadra-infra` | `feature/terraform-email`                   | SES e permissões de envio; entrega**opcional**                                                                           |
+| 11    | `quadra-infra` | `feature/terraform-app-storage`             | bucket de uploads da aplicação e permissões necessárias; entrega**opcional e última**, sem uso definido na API ainda |
 
 > Etapa 1 concluída: `feature/terraform-network` provisionou a VPC, duas subnets
 > públicas, duas privadas, Internet Gateway e route tables, sem NAT Gateway.
@@ -82,24 +83,22 @@ em `terraform/`.
 > definition, IAM adicional e ECS Service foram criados. O serviço permanece
 > pausado até a publicação da primeira imagem compatível da API.
 
-> A etapa 6 usa somente duas branches, uma por repositório, e deve seguir integralmente
-> `../../docs/planning-template.md`: primeiro fecha e aprova a spec
-> cross-repository; depois produz e aprova o plano; somente então inicia a
-> implementação.
-> A branch de infraestrutura deve ser integrada e aplicada antes do merge da
-> branch da API, pois esse merge poderá disparar o primeiro deploy.
+> **Etapa 6 concluída:** o CI básico do Terraform (`fmt -check`,
+> `init -backend=false`, `validate`), o provedor OIDC GitHub e a role de menor
+> privilégio do deploy da API foram aplicados, e o workflow `CI/CD` da API
+> publicou o primeiro deploy saudável — `https://api.appquadra.com.br/health`
+> responde HTTP 200.
 
-> **Etapa 6 — Tasks 5–6 (pacote de deploy): planejadas, ainda não aplicadas.**
-> O CI básico do Terraform (`fmt -check`, `init -backend=false`, `validate` em
-> `pull_request`/`push` para `dev` e `main`, com filtros de paths), o provedor
-> OIDC GitHub e a role de menor privilégio para o deploy da API estão definidos
-> no código e na documentação desta branch, mas **não** devem ser tratados como
-> provisionados até `terraform apply` manual confirmado. O workflow `CI/CD` da
-> API (OIDC restrito a `repo:matheusecke/quadra-api:ref:refs/heads/main`, imagem
-> com SHA imutável, `prisma migrate deploy` isolado, circuit breaker e
-> verificação HTTP 200 em `https://api.appquadra.com.br/health`) segue o mesmo
-> status: implementado no repositório da API, aguardando integração e primeiro
-> deploy saudável.
+> **Etapa 7 provisionada:** `terraform/frontend.tf` e a role
+> `quadra-production-web-deploy-role` em `terraform/github_oidc.tf` criaram
+> bucket privado, OAC, distribuição CloudFront, certificado, DNS do domínio raiz
+> e a identidade de deploy do `quadra-web` — 12 recursos, sem alterações nem
+> destruições. O job `Deploy` do workflow do `quadra-web` (OIDC restrito a
+> `repo:matheusecke/quadra-web:ref:refs/heads/main`, build com
+> `VITE_API_URL=https://api.appquadra.com.br`, sync no S3, invalidação do
+> CloudFront e verificação HTTP 200 em `https://appquadra.com.br`) publicou o
+> primeiro deploy com sucesso, e o frontend está no ar. Ver a seção
+> *Hospedagem do frontend* abaixo.
 
 Os arquivos Terraform serão separados por responsabilidade apenas quando cada
 entrega precisar deles, por exemplo: `locals.tf`, `network.tf`,
@@ -303,6 +302,65 @@ Antes do primeiro deploy, a API precisa aceitar `DATABASE_SECRET` no formato
 JSON produzido pelo RDS e construir internamente a conexão PostgreSQL, mantendo
 `DATABASE_URL` para desenvolvimento local. Sem essa compatibilidade e sem o
 valor do JWT secret, o serviço deve continuar com `desired_count = 0`.
+
+## Hospedagem do frontend: S3 privado e CloudFront (provisionado)
+
+O `quadra-web` é uma SPA Vite, publicada como build estático. Não há container,
+ALB nem task ECS para o frontend: o custo seria recorrente e nada do que o ALB
+oferece é necessário para servir arquivos.
+
+O desenho provisionado em `terraform/frontend.tf`:
+
+- bucket S3 `quadra-production-frontend-141145164743`, com bloqueio completo de
+  acesso público; ele nunca é acessado diretamente pela internet;
+- Origin Access Control (OAC, SigV4) como único caminho de leitura do bucket. A
+  bucket policy permite `s3:GetObject` apenas ao principal
+  `cloudfront.amazonaws.com` e apenas quando `AWS:SourceArn` é a distribuição
+  deste projeto;
+- distribuição CloudFront com `index.html` como default root object, compressão
+  habilitada, `redirect-to-https`, TLS mínimo `TLSv1.2_2021` e a cache policy
+  gerenciada `Managed-CachingOptimized`;
+- certificado ACM próprio para `appquadra.com.br`, validado por DNS. CloudFront
+  exige certificado em `us-east-1`, que já é a região do stack;
+- registros alias `A` e `AAAA` no Route 53 apontando o domínio raiz para a
+  distribuição. O `AAAA` existe porque a distribuição habilita IPv6;
+- `price_class` não é declarado, ficando no padrão `PriceClass_All`. É o único
+  price class que inclui edges na América do Sul, e o volume do TCC permanece
+  dentro do free tier do CloudFront.
+
+### Fallback de SPA
+
+Rotas de cliente como `/tournaments/1` não existem como objeto no bucket. Com
+origem privada, o S3 responde `403` para chave inexistente (e `404` quando a
+listagem é permitida), então a distribuição mapeia **403 e 404** para
+`/index.html` com HTTP `200` e `error_caching_min_ttl = 0`. O React Router
+resolve a rota no navegador. É o mesmo efeito do `try_files $uri /index.html`
+que o `nginx.conf` do `quadra-web` usa localmente.
+
+Consequência aceita: um asset realmente inexistente também devolve o HTML da
+aplicação com `200`, em vez de `404`.
+
+### Deploy e identidade
+
+O deploy pertence ao GitHub Actions do `quadra-web`, nunca ao `terraform apply`.
+O Terraform cria a role `quadra-production-web-deploy-role`, assumida por OIDC
+com trust restrito a `repo:matheusecke/quadra-web:ref:refs/heads/main`, separada
+da role de deploy da API. Suas permissões são apenas:
+
+- `s3:ListBucket` no bucket do frontend;
+- `s3:PutObject` e `s3:DeleteObject` nos objetos desse bucket;
+- `cloudfront:CreateInvalidation` na distribuição;
+- `cloudfront:ListDistributions` (sem escopo por ARN na API do CloudFront),
+  usada pelo workflow para descobrir o ID da distribuição a partir do alias, em
+  vez de fixar no repositório um valor que só passa a existir depois do apply.
+
+O build de produção usa `VITE_API_URL=https://api.appquadra.com.br`, valor
+embutido no bundle em tempo de build — não é segredo e não há configuração de
+runtime no frontend. A API já responde com
+`access-control-allow-origin: https://appquadra.com.br`, valor de `CORS_ORIGIN`
+na task definition, e o cookie `refreshToken` funciona entre `appquadra.com.br`
+e `api.appquadra.com.br` porque `SameSite=Strict` considera o domínio
+registrável, não o subdomínio.
 
 ## Desenho de rede: sem NAT Gateway (decisão implementada)
 
