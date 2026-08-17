@@ -172,6 +172,43 @@ plan executado após o apply confirmou `No changes`. O ALB já gera custo mesmo
 com o serviço pausado; não há custo de task Fargate enquanto
 `desired_count = 0`.
 
+### Hospedagem do frontend
+
+- O bucket `quadra-production-frontend-141145164743` armazena o build do
+  `quadra-web` e tem bloqueio completo de acesso público.
+- O Origin Access Control `E1HU77L175CA5V` é o único caminho de leitura do
+  bucket; a bucket policy autoriza `s3:GetObject` apenas ao principal do
+  CloudFront e apenas para o ARN desta distribuição.
+- A distribuição CloudFront `EUL2VBY6P6R7Q` serve `appquadra.com.br`, com
+  `index.html` como default root object e `403`/`404` mapeados para
+  `/index.html` com HTTP 200 (fallback de SPA).
+- O certificado ACM de `appquadra.com.br` foi validado por DNS.
+- Os aliases `A` e `AAAA` do domínio raiz apontam para a distribuição.
+- A role `quadra-production-web-deploy-role` é assumida por OIDC pelo
+  `quadra-web` em `refs/heads/main` e pode apenas listar e escrever no bucket do
+  frontend e criar invalidações nessa distribuição.
+
+O apply da etapa do frontend criou 12 recursos, sem alterações ou destruições.
+Verificado depois do apply: o domínio resolve em IPv4 e IPv6, o TLS usa o
+certificado novo e a requisição é atendida pelo edge `GRU3` (São Paulo). Não há
+custo fixo nesta etapa: o volume do projeto fica dentro do free tier permanente
+do CloudFront e o armazenamento no S3 é de alguns MB.
+
+O primeiro deploy do `quadra-web` foi publicado pelo GitHub Actions e o
+frontend está no ar. Verificado depois do deploy:
+
+- `https://appquadra.com.br` responde HTTP 200 com `cache-control: no-cache` no
+  `index.html`;
+- `https://appquadra.com.br/tournaments/1` — rota que não existe como objeto no
+  bucket — responde HTTP 200 com `text/html`, confirmando o fallback de SPA;
+- os bundles em `/assets/` respondem com
+  `cache-control: public, max-age=31536000, immutable`;
+- o bundle publicado aponta para `https://api.appquadra.com.br`;
+- carregada em um navegador, a aplicação inicializa, chama
+  `POST https://api.appquadra.com.br/auth/refresh`, recebe `401` por não haver
+  sessão e redireciona para a tela de login — o caminho frontend → API funciona
+  de ponta a ponta, com DNS, TLS, CORS e credenciais.
+
 ## Segurança
 
 Não registrar neste repositório:
