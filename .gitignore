@@ -17,3 +17,5 @@ terraform.tfvars
 backend.hcl
 .terraformrc
 terraform.rc
+
+/docs/superpowers/

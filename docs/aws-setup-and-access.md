@@ -172,6 +172,71 @@ plan executado após o apply confirmou `No changes`. O ALB já gera custo mesmo
 com o serviço pausado; não há custo de task Fargate enquanto
 `desired_count = 0`.
 
+### Pausa e retomada do ambiente
+
+O repositório contém o mecanismo de operação, mas o EventBridge Scheduler só
+passa a existir depois de um `terraform apply` manual. Nenhum `apply` ou comando
+real de pausa/retomada é executado automaticamente pelo CI.
+
+Pré-requisitos locais:
+
+- Bash 5, AWS CLI v2 e `curl`;
+- sessão AWS autenticada, normalmente com `AWS_PROFILE=quadra-admin`;
+- identidade na conta `141145164743` e região `us-east-1`;
+- Scheduler já provisionado pelo Terraform.
+
+Consultar o estado não altera recursos:
+
+```bash
+./scripts/aws-environment.sh status
+```
+
+Pausar reduz o ECS para zero, espera o serviço estabilizar, para o RDS e só
+então habilita o Scheduler diário:
+
+```bash
+./scripts/aws-environment.sh pause
+```
+
+Retomar desabilita primeiro o Scheduler, inicia e aguarda o RDS ficar
+`available`, sobe uma task ECS e só termina depois de serviço estável, target
+saudável e `https://api.appquadra.com.br/health` responder HTTP 200:
+
+```bash
+./scripts/aws-environment.sh resume
+```
+
+Cada operação mostra o estado inicial, transitório e final do RDS. Código de
+saída `1` indica entrada, autenticação, recurso, AWS CLI ou health check com
+falha; código `2` indica estado transitório, inválido ou combinação operacional
+inconsistente. Não há rollback automático: após estado parcial, corrigir a
+causa, consultar `status` e decidir explicitamente entre repetir `pause` ou
+`resume`.
+
+Durante `pause` e `resume`, o script mostra etapas numeradas e timestamps antes
+e depois das esperas da AWS. Enquanto o RDS está parando, o estado é consultado
+a cada 30 segundos por até 30 minutos. As cores são usadas somente no terminal
+e podem ser desativadas com `NO_COLOR=1`; saídas redirecionadas permanecem sem
+códigos ANSI.
+
+O RDS parado é reiniciado automaticamente pela AWS depois de sete dias. Por
+isso, enquanto o ambiente está intencionalmente pausado, um EventBridge
+Scheduler diário às `03:00 UTC` reaplica `StopDBInstance` diretamente, sem
+Lambda. `resume` o desabilita antes de iniciar o banco.
+
+A pausa não elimina cobranças de ALB, armazenamento e backups do RDS, S3, ECR,
+Route 53, Secrets Manager ou logs. Ela interrompe somente a computação das
+tasks Fargate e da instância RDS enquanto esta permanecer parada.
+
+Para ativar o mecanismo pela primeira vez, em uma sessão operacional separada:
+
+1. revisar um `terraform plan` novo;
+2. aplicar somente após aprovação humana explícita;
+3. confirmar que o schedule foi criado como `DISABLED`;
+4. executar `./scripts/aws-environment.sh status` antes de qualquer operação;
+5. executar `pause` ou `resume` somente após revisar o estado reportado;
+6. executar `status` novamente e conferir o estado final.
+
 ### Hospedagem do frontend
 
 - O bucket `quadra-production-frontend-141145164743` armazena o build do
